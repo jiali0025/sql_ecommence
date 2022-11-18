@@ -104,3 +104,80 @@ FROM
 ORDER BY sales DESC;
 
 ---- Query 7: Check the monthly profitability and monthly quantity sold to see if there are patterns in the dataset
+SELECT CONCAT(MONTHNAME(STR_TO_DATE(order_date, '%d%m%Y')), "-", YEAR(STR_TO_DATE(order_date, '%d%m%Y')) AS month_of_year,
+       SUM(Profit) AS total_profit, SUM(Quantity) AS total_quantity
+FROM combined_orders
+GROUP BY month_of_year
+ORDER BY month_of_year = 'April-2018' DESC,
+         month_of_year = 'May-2018' DESC,
+         month_of_year = 'June-2018' DESC,
+         month_of_year = 'July-2018' DESC,
+         month_of_year = 'August-2018' DESC,
+         month_of_year = 'September-2018' DESC,
+         month_of_year = 'October-2018' DESC,
+         month_of_year = 'November-2018' DESC,
+         month_of_year = 'December-2018' DESC,
+         month_of_year = 'January-2019' DESC,
+         month_of_year = 'February-2019' DESC,
+         month_of_year = 'March-2019' DESC;
+
+---- Query 8: Determine the number of times that salespeople hit or failed to hit the sales target for each category
+-- find out the sales for each category in each month 
+CREATE VIEW sales_by-category AS
+SELECT CONCAT(SUBSTR(MONTHNAME(STR_TO_DATE(order_date, '%d%m%Y')), 1, 3), "-", SURSTR(YEAR(STR_TO_DATE(order_date, '%d%m%Y')), 3, 2)) AS order_monthyear, Category, SUM(Amount) AS Sales
+FROM combined_orders
+GROUP BY order_monthyear, Category;
+
+-- check if the sales hit the target set for each category in each month
+CREATE VIEW sales_vs_target AS
+SELECT *, CASE 
+            WHEN Sales >= Target THEN 'Hit'
+            ELSE 'Fail'
+        END AS hit_or_fail
+FROM 
+    (SELECT s.order_monthyear, sCategory, s.Sales, t.Target
+    FROM sales_by_category AS s
+    INNER JOIN sales_target AS t ON s.order_monthyear = t.month_of_order
+    AND s.Category = t.Category) st;
+
+-- return the number of times that the target is met & the number of times that the target is not met
+SELECT h.Category, h.Hit, f.Fail
+FROM 
+    (SELECT Category, COUNT(*) AS Hit
+    FROM sales_vs_target
+    WHERE hit_or_fail LIKE 'Hit'
+    GROUP BY Category) h 
+INNER JOIN 
+    (SELECT Category, COUNT(*) AS Fail
+    FROM sales_vs_target
+    WHERE hit_or_fail LIKE 'Fail'
+    GROUP BY Category) f 
+ON h.Category = f.Category;
+
+---- Query 9: Find the total sales, total profit, and total quantity sold for each category and sub-category. Return the maximum cost and maximum price for each sub-category too
+-- find order quantity, profit, amount for each subcategory
+-- eletronic games & tables subcategoryies resulted in loss
+CREATE VIEW order_detials_by_total AS
+SELECT Category, sub_category,
+       SUM(Quantity) AS total_order_quantity,
+       SUM(Profit) AS total_profit,
+       SUM(Amount) AS total_amount
+FROM order_details
+GROUP BY sub_category
+ORDER BY total_order_quantity DESC;
+
+-- Maximum cost per unit & maximum price per unit for each subcategory
+CREATE VIEW order_details_by_unit AS
+SELECT Category, sub_category, MAX(cost_per_unit) AS max_cost, MAX(price_per_unit) AS max_price
+FROM (SELECT *, round((Amount-Profit)/Quantity, 2) AS cost_per_unit, round(Amount/Quantity, 2) AS price_per_unit
+      FROM order_details) c 
+GROUP BY sub_category
+ORDER BY max_cost DESC;
+
+-- combine order_details_by_unit and order_details_by_total table
+SELECT t.Category, t.sub_category, t.total_order_quantity, t.total_profit, t.total_amount, u.max_cost, u.max_price
+FROM order_details_by_total AS t 
+INNER JOIN order_details_by_unit AS u 
+ON t.sub_category = u.sub_category; 
+
+
